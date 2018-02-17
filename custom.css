@@ -1,0 +1,38 @@
+body {
+	font-family: Go, Lato, Helvetica, Arial, sans-serif;
+	background-color: #EEE;
+}
+pre, code, h2, h3 {
+	font-family: "Go Mono", Menlo, Consolas, monospace;
+}
+pre, code {
+	font-size: 13px;
+}
+h2 {
+	background-color: #BBDEFB;
+	border-radius: 3px;
+}
+h3 {
+	color: #33691E;
+	background-color: #CFD8DC;
+	padding: 4px 6px;
+	font-size: 14px;
+	border-radius: 2px;
+}
+a[href^="http://"]:after,
+a[href^="https://"]:after,
+a[href^="//"]:after {
+	/* using base64 image here will crash the htmlhelp compiler */
+	content: " \261b";
+}
+
+div#topbar {
+	background-color: #90CAF9;
+}
+#menu {
+	display: none;
+}
+div#footer {
+	border-top: 1px solid #CFD8DC;
+	padding-top: 10px;
+}
