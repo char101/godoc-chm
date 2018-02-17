@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -344,8 +345,11 @@ func findPackages(url string, doc *goquery.Document) {
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	useCache := flag.Bool("cache", false, "Cache request responses in a database")
-	outputDir := flag.String("output", "", "Output directory for downloaded files")
+	var useCache bool
+	var outputDir string
+
+	flag.BoolVar(&useCache, "cache", false, "Cache request responses in a database")
+	flag.StringVar(&outputDir, "output", "", "Output directory for downloaded files")
 	flag.Parse()
 
 	if flag.NArg() == 0 {
@@ -354,22 +358,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	wd := path.New("").Abs()
-
-	if *outputDir != "" {
-		path.New(*outputDir).MkdirAll().Chdir()
+	godocURL := flag.Arg(0)
+	if strings.HasSuffix(godocURL, "/pkg") {
+		godocURL += "/"
+	} else if !strings.HasSuffix(godocURL, "/pkg/") {
+		godocURL += "/pkg/"
 	}
 
-	if *useCache {
+	if outputDir != "" {
+		outputDir, err := filepath.Abs(outputDir)
+		if err != nil {
+			log.Fatal(err)
+		}
+		path.New(outputDir).MkdirAll().Chdir()
+	}
+
+	if useCache {
 		cache = newCache()
 		defer cache.close()
 	}
 
 	project.Toc().Root().Add("Packages", "pkg/index.html")
 	project.SetStartFile("pkg/index.html")
-	parse(flag.Args()[0], findPackages)
-	if *outputDir != "" {
-		chm.LinkFile(wd.Join("custom.css").String(), *outputDir)
+	parse(godocURL, findPackages)
+	if outputDir != "" {
+		exe, err := os.Executable()
+		if err != nil {
+			log.Fatal(err)
+		}
+		chm.LinkFile(path.New(exe).Dir().Join("custom.css").String(), outputDir)
 	}
 	project.AddFile("custom.css")
 	project.Save()

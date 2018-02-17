@@ -123,6 +123,10 @@ func LinkFile(src string, dst string) {
 		dp = dp.Join(sp.Basename())
 	}
 	if !dp.Exists() {
-		sp.Symlink(dp)
+		_, err := sp.SymlinkErr(dp)
+		if err != nil {
+			log.Printf("Symlinking %s to %s %v failed (%v), copying instead", sp, dp, dp.IsDir(), err)
+			sp.Copy(dp)
+		}
 	}
 }
