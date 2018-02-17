@@ -2,6 +2,16 @@
 
 Generates CHM documentation from godoc http server.
 
+## Features
+
+* All packages, variables, constants, functions, and types shown hierarchically in
+  the table of contents
+* All packages, variables, constants, functions, and types searchable in the index
+
+## Download
+
+An example CHM for go 1.10 can be downloaded from the releases tab.
+
 ## Install
 
 ```
