@@ -20,14 +20,15 @@ import (
 type processFunc func(string, *goquery.Document)
 
 var (
-	styleRe        = regexp.MustCompile(`padding-left:\s*(\d+)px`)
-	nbspPrefixRe   = regexp.MustCompile("^(\\s*(\u00A0|&nbsp;))*")
-	nbspRe         = regexp.MustCompile("(\u00A0|&nbsp;)")
-	absoluteURLRe  = regexp.MustCompile(`^(http|https|ftp)?://`)
-	funcReceiverRe = regexp.MustCompile(`^\(.+?\)`)
-	project        = chm.NewProject("Go")
-	cache          *Cache
-	staticMap      = make(map[string]bool)
+	styleRe             = regexp.MustCompile(`padding-left:\s*(\d+)px`)
+	nbspPrefixRe        = regexp.MustCompile("^(\\s*(\u00A0|&nbsp;))*")
+	nbspRe              = regexp.MustCompile("(\u00A0|&nbsp;)")
+	absoluteURLRe       = regexp.MustCompile(`^(http|https|ftp)?://`)
+	funcReceiverRe      = regexp.MustCompile(`^\(.+?\)`)
+	project             = chm.NewProject("Go")
+	cache               *Cache
+	staticMap           = make(map[string]bool)
+	blacklistedPrefixes = make([]string, 0)
 )
 
 // fetch URL as string
@@ -145,6 +146,15 @@ func downloadStatic(baseURL string, doc *goquery.Document) {
 
 func getTitle(doc *goquery.Document) string {
 	return chm.CleanTitle(doc.Find("title").Text())
+}
+
+func isBlacklisted(pkg string) bool {
+	for _, bl := range blacklistedPrefixes {
+		if bl == pkg || strings.HasPrefix(pkg, bl+".") {
+			return true
+		}
+	}
+	return false
 }
 
 func findIndex(toc *chm.TocItem, url string, doc *goquery.Document, pkg string) {
@@ -319,11 +329,14 @@ func findPackages(url string, doc *goquery.Document) {
 		title := chm.CleanTitle(a.Text())
 		link := strings.TrimPrefix(chm.AbsolutePath(url, href), "/")
 
+		fullPkg := strings.TrimPrefix(strings.Join(parents, "/")+"/"+title, "/")
+		if isBlacklisted(fullPkg) {
+			return
+		}
+
 		tc := toc.Add(title, link)
 
 		au := chm.AbsoluteURL(url, href)
-
-		fullPkg := strings.TrimPrefix(strings.Join(parents, "/")+"/"+title, "/")
 
 		pkgdoc, _ := parse(au, func(url string, doc *goquery.Document) {
 			findIndex(tc, url, doc, fullPkg)
@@ -346,16 +359,26 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	var useCache bool
-	var outputDir string
-
 	flag.BoolVar(&useCache, "cache", false, "Cache request responses in a database")
+
+	var outputDir string
 	flag.StringVar(&outputDir, "output", "", "Output directory for downloaded files")
+
+	var blacklist string
+	flag.StringVar(&blacklist, "blacklist", "", "Blacklisted prefixes, separated by comma")
+
 	flag.Parse()
 
 	if flag.NArg() == 0 {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags] godoc-url\nFlags:\n", os.Args[0])
 		flag.PrintDefaults()
 		os.Exit(1)
+	}
+
+	if blacklist != "" {
+		for _, bl := range strings.Split(blacklist, "/") {
+			blacklistedPrefixes = append(blacklistedPrefixes, strings.TrimSpace(bl))
+		}
 	}
 
 	godocURL := flag.Arg(0)

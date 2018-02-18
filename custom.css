@@ -2,22 +2,27 @@ body {
 	font-family: Go, Lato, Helvetica, Arial, sans-serif;
 	background-color: #EEE;
 }
-pre, code, h2, h3 {
+pre, code {
 	font-family: "Go Mono", Menlo, Consolas, monospace;
 }
 pre, code {
 	font-size: 13px;
 }
+h2, h3 {
+	font-family: "Roboto Condensed", Go, Lato, Helvetica, Arial, sans-serif;
+}
 h2 {
-	background-color: #BBDEFB;
-	border-radius: 3px;
+	color: #666;
+	background-color: transparent;
+	border-top: 3px solid #C5CAE9;
+	border-bottom: 2px solid #C5CAE9;
 }
 h3 {
-	color: #33691E;
-	background-color: #CFD8DC;
+	color: #777;
+	background-color: #DDD;
+	border-left: 3px solid #7CB342;
 	padding: 4px 6px;
-	font-size: 14px;
-	border-radius: 2px;
+	font-size: 16px;
 }
 a[href^="http://"]:after,
 a[href^="https://"]:after,
