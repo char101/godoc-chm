@@ -15,6 +15,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/char101/godoc-chm/chm"
 	path "github.com/char101/path.go"
+	"golang.org/x/net/html"
 )
 
 type processFunc func(string, *goquery.Document)
@@ -29,6 +30,7 @@ var (
 	cache               *Cache
 	staticMap           = make(map[string]bool)
 	blacklistedPrefixes = make([]string, 0)
+	funcNameRe          = regexp.MustCompile(`^\w+`)
 )
 
 // fetch URL as string
@@ -150,11 +152,16 @@ func getTitle(doc *goquery.Document) string {
 
 func isBlacklisted(pkg string) bool {
 	for _, bl := range blacklistedPrefixes {
-		if bl == pkg || strings.HasPrefix(pkg, bl+".") {
+		if bl == pkg || strings.HasPrefix(pkg, bl+"/") {
 			return true
 		}
 	}
 	return false
+}
+
+// removes parameters and return values from function prototype
+func simplifyFunc(f string) string {
+	return fmt.Sprintf("%s()", funcNameRe.FindString(f))
 }
 
 func findIndex(toc *chm.TocItem, url string, doc *goquery.Document, pkg string) {
@@ -209,16 +216,35 @@ func findIndex(toc *chm.TocItem, url string, doc *goquery.Document, pkg string) 
 				tag = "method"
 				text = strings.TrimSpace(funcReceiverRe.ReplaceAllString(text, ""))
 				if !strings.HasPrefix(text, "String() string") {
-					index.Add(fmt.Sprintf("%s (method of %s in %s)", text, currToc.Label(), pkg)).AddLocal(link, pkg)
+					index.Add(fmt.Sprintf("%s (method of %s in %s)", simplifyFunc(text), currToc.Label(), pkg)).AddLocal(link, pkg)
 				}
 			} else {
 				tag = "function"
-				index.Add(fmt.Sprintf("%s (func in %s)", text, pkg)).AddLocal(link, pkg)
+				index.Add(fmt.Sprintf("%s (func in %s)", simplifyFunc(text), pkg)).AddLocal(link, pkg)
 			}
 		}
+
 		t := currToc.Add(text, link)
 		if tag != "" {
 			t.TagAs(tag)
+		}
+
+		// add struct fields to the toc
+		if tag == "type" {
+			var id string
+			var ft *chm.TocItem // fields toc, created as necessary
+			doc.Find("h2#" + text).Next().Contents().Each(func(i int, s *goquery.Selection) {
+				if id != "" && s.Get(0).Type == html.TextNode {
+					if ft == nil {
+						ft = t.Add("Fields", "")
+					}
+					tf := ft.Add(chm.CleanTitle(s.Text()), strings.TrimPrefix(chm.AbsolutePath(url, "#"+id), "/"))
+					tf.TagAs("field")
+					id = ""
+				} else if goquery.NodeName(s) == "span" {
+					id, _ = s.Attr("id")
+				}
+			})
 		}
 
 		if text == "Constants" {
@@ -280,12 +306,13 @@ func findIndex(toc *chm.TocItem, url string, doc *goquery.Document, pkg string) 
 
 func findPackages(url string, doc *goquery.Document) {
 	var (
-		prevLevel = 0
-		toc       = project.Toc().Root()
-		prevToc   *chm.TocItem
-		prevTitle string
-		index     = project.Index().Root()
-		getLevel  = func(s *goquery.Selection) int {
+		prevLevel       = 0
+		toc             = project.Toc().Root()
+		prevToc         *chm.TocItem
+		prevTitle       string
+		prevBlacklisted bool
+		index           = project.Index().Root()
+		getLevel        = func(s *goquery.Selection) int {
 			style, ok := s.Attr("style")
 			if !ok {
 				log.Fatal("style attribute not found")
@@ -314,11 +341,15 @@ func findPackages(url string, doc *goquery.Document) {
 	doc.Find("td.pkg-name").Each(func(i int, s *goquery.Selection) {
 		level := getLevel(s)
 		if level > prevLevel {
-			toc = prevToc
+			if !prevBlacklisted {
+				toc = prevToc
+			}
 			parents = append(parents, prevTitle)
 		} else if level < prevLevel {
 			for i = level; i < prevLevel; i++ {
-				toc = toc.Parent()
+				if !prevBlacklisted {
+					toc = toc.Parent()
+				}
 				parents = parents[:len(parents)-1]
 			}
 		}
@@ -330,28 +361,31 @@ func findPackages(url string, doc *goquery.Document) {
 		link := strings.TrimPrefix(chm.AbsolutePath(url, href), "/")
 
 		fullPkg := strings.TrimPrefix(strings.Join(parents, "/")+"/"+title, "/")
-		if isBlacklisted(fullPkg) {
-			return
-		}
-
-		tc := toc.Add(title, link)
-
-		au := chm.AbsoluteURL(url, href)
-
-		pkgdoc, _ := parse(au, func(url string, doc *goquery.Document) {
-			findIndex(tc, url, doc, fullPkg)
-		})
-
-		if isDirectory(pkgdoc) {
-			tc.TagAs("directory")
+		blacklisted := isBlacklisted(fullPkg)
+		if blacklisted {
+			log.Println(fullPkg, "is blacklisted")
 		} else {
-			indexTitle := fmt.Sprintf("%s (package %s)", title, fullPkg)
-			index.Add(indexTitle).AddLocal(link, getTitle(pkgdoc))
+			tc := toc.Add(title, link)
+
+			au := chm.AbsoluteURL(url, href)
+
+			pkgdoc, _ := parse(au, func(url string, doc *goquery.Document) {
+				findIndex(tc, url, doc, fullPkg)
+			})
+
+			if isDirectory(pkgdoc) {
+				tc.TagAs("directory")
+			} else {
+				indexTitle := fmt.Sprintf("%s (package %s)", title, fullPkg)
+				index.Add(indexTitle).AddLocal(link, getTitle(pkgdoc))
+			}
+
+			prevToc = tc
 		}
 
 		prevLevel = level
-		prevToc = tc
 		prevTitle = title
+		prevBlacklisted = blacklisted
 	})
 }
 

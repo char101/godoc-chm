@@ -128,6 +128,8 @@ func (t *TocItem) TagAs(tag string) {
 		t.image = 17
 	case "method":
 		t.image = 19
+	case "field":
+		t.image = 35
 	case "type", "class", "interface":
 		t.image = 37
 	default:

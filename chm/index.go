@@ -1,6 +1,8 @@
 package chm
 
 import (
+	"log"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -28,20 +30,22 @@ func NewIndex() *Index {
 	}
 }
 
-// GetProperties returns the properties
+// Properties returns the properties
 func (i *Index) Properties() map[string]string {
 	return i.properties
 }
 
-// GetRoot returns the root node
+// Root returns the root node
 func (i *Index) Root() *IndexItem {
 	return i.root
 }
 
+// SetProp set index property
 func (i *Index) SetProp(k, v string) {
 	i.properties[k] = v
 }
 
+// GetProp returns index property
 func (i *Index) GetProp(k string) string {
 	return i.properties[k]
 }
@@ -119,6 +123,7 @@ func (i *IndexItem) IsRoot() bool {
 	return i.parent == nil
 }
 
+// Sort sorts the index subkeywords
 func (i *IndexItem) Sort() {
 	sort.Sort(IndexSorter(i.children))
 }
@@ -170,8 +175,72 @@ func (a LocalSorter) Less(i, j int) bool {
 // IndexSorter sorts the keywords
 type IndexSorter []*IndexItem
 
+var nameRe = regexp.MustCompile(`^\w+`)
+var pkgRe = regexp.MustCompile(`\((const|var|func|type) in (.+)\)$`)
+var methodRe = regexp.MustCompile(`\((method) of (\w+?) in (.+)\)$`)
+
+var typeWeights = map[string]int{
+	"const":  1,
+	"var":    2,
+	"func":   3,
+	"type":   4,
+	"method": 5,
+}
+
+// splitKeyword splits the index keywork into package, struct, name
+func splitKeyword(keyword string) (name, typeName, structName, packageName string) {
+	name = nameRe.FindString(keyword)
+	if name == "" {
+		log.Fatal("name is empty in", keyword)
+	}
+
+	if matches := methodRe.FindStringSubmatch(keyword); matches != nil {
+		typeName, structName, packageName = matches[1], matches[2], matches[3]
+	} else if matches := pkgRe.FindStringSubmatch(keyword); matches != nil {
+		typeName, packageName = matches[1], matches[2]
+	}
+	return
+}
+
+func comparePackage(p1, p2 string) int {
+	p1p := strings.Split(strings.ToLower(p1), "/")
+	p2p := strings.Split(strings.ToLower(p2), "/")
+
+	if len(p1p) < len(p2p) {
+		return -1
+	} else if len(p1p) > len(p2p) {
+		return 1
+	}
+
+	for i := 0; i < len(p1p); i++ {
+		v1 := p1p[i]
+		v2 := p2p[i]
+		if v1 < v2 {
+			return -1
+		} else if v1 > v2 {
+			return 1
+		}
+	}
+
+	return 0
+}
+
 func (a IndexSorter) Len() int      { return len(a) }
 func (a IndexSorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a IndexSorter) Less(i, j int) bool {
-	return strings.ToLower(a[i].keyword) < strings.ToLower(a[j].keyword)
+	k1 := strings.ToLower(a[i].keyword)
+	n1, t1, s1, p1 := splitKeyword(k1)
+	k2 := strings.ToLower(a[j].keyword)
+	n2, t2, s2, p2 := splitKeyword(k2)
+	pv := comparePackage(p1, p2)
+	if n1 != n2 {
+		return n1 < n2
+	} else if pv != 0 {
+		return pv < 0
+	} else if t1 != t2 {
+		return typeWeights[t1] < typeWeights[t2]
+	} else if s1 != s2 {
+		return s1 < s2
+	}
+	return k1 < k2
 }
