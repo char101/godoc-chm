@@ -1,28 +1,32 @@
 body {
 	font-family: Go, Lato, Helvetica, Arial, sans-serif;
 	background-color: #EEE;
+	font-size: 90%;
 }
 pre, code {
 	font-family: "Go Mono", Menlo, Consolas, monospace;
+	font-size: 90%;
 }
-pre, code {
-	font-size: 13px;
+pre {
+	background-color: #DDD;
 }
 h2, h3 {
 	font-family: "Roboto Condensed", Go, Lato, Helvetica, Arial, sans-serif;
 }
 h2 {
+	font-size: 130%;
+	font-weight: bold;
 	color: #666;
 	background-color: transparent;
 	border-top: 3px solid #C5CAE9;
 	border-bottom: 2px solid #C5CAE9;
 }
 h3 {
-	color: #777;
+	color: #555;
 	background-color: #DDD;
 	border-left: 3px solid #7CB342;
 	padding: 4px 6px;
-	font-size: 16px;
+	font-size: 120%;
 }
 a[href^="http://"]:after,
 a[href^="https://"]:after,
@@ -36,6 +40,14 @@ div#topbar {
 }
 #menu {
 	display: none;
+}
+#manual-nav dl {
+	line-height: 1.5;
+}
+#pkg-index h3 {
+	font-size: 110%;
+	padding: 7px;
+	font-weight: normal;
 }
 div#footer {
 	border-top: 1px solid #CFD8DC;
