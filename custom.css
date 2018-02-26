@@ -1,6 +1,6 @@
 body {
 	font-family: Go, Lato, Helvetica, Arial, sans-serif;
-	background-color: #EEE;
+	background-color: #F0F0F0;
 	font-size: 90%;
 }
 pre, code {
@@ -9,6 +9,9 @@ pre, code {
 }
 pre {
 	background-color: #DDD;
+}
+pre .ln {
+	background-color: transparent;
 }
 h2, h3 {
 	font-family: "Roboto Condensed", Go, Lato, Helvetica, Arial, sans-serif;

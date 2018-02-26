@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// Separator is the separator between index keyword and description
+const IndexSeparator string = " - "
+
 // children of a keyword is indented
 // multiple topics of a keyword is displayed in a popup window
 
@@ -176,8 +179,8 @@ func (a LocalSorter) Less(i, j int) bool {
 type IndexSorter []*IndexItem
 
 var nameRe = regexp.MustCompile(`^\w+`)
-var pkgRe = regexp.MustCompile(`\((const|var|func|type) in (.+)\)$`)
-var methodRe = regexp.MustCompile(`\((method) of (\w+?) in (.+)\)$`)
+var pkgRe = regexp.MustCompile(regexp.QuoteMeta(IndexSeparator) + ` (const|var|func|type) in (.+)$`)
+var methodRe = regexp.MustCompile(regexp.QuoteMeta(IndexSeparator) + ` (method) of (\w+?) in (.+)$`)
 
 var typeWeights = map[string]int{
 	"const":  1,

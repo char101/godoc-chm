@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	urllib "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,8 +35,8 @@ var (
 )
 
 // fetch URL as string
-func fetch(url string) []byte {
-	if cache != nil {
+func fetch(url string, useCache bool) []byte {
+	if useCache && cache != nil {
 		data := cache.get(url)
 		if data != nil {
 			return data
@@ -80,14 +81,51 @@ func clean(url string, doc *goquery.Document) {
 		doc.Find(tag).Each(func(i int, s *goquery.Selection) {
 			val, _ := s.Attr(attr)
 			if val != "" {
-				if strings.HasPrefix(val, "/") && !strings.HasPrefix(val, "//") {
-					s.SetAttr(attr, chm.RelativePath(url, val))
-				} else {
-					s.SetAttr(attr, chm.AddIndex(val))
+				if !(strings.HasPrefix(val, "//") ||
+					strings.HasPrefix(val, "http://") ||
+					strings.HasPrefix(val, "https://")) {
+					val = chm.RelativePath(url, val)
+
+					p, err := urllib.Parse(chm.AbsolutePath(url, val))
+					if err != nil {
+						log.Fatal(err)
+					}
+					if path.New(p.Path[1:]).IsDir() {
+						if !strings.HasSuffix(val, "/") {
+							val += "/"
+						}
+						val = chm.AddIndex(val)
+					}
+					s.SetAttr(attr, val)
 				}
 			}
 		})
 	}
+
+	removeElements := func(selector string) {
+		doc.Find(selector).Remove()
+	}
+
+	removeElements("div#menu")
+
+	doc.Find("a").Each(func(i int, s *goquery.Selection) {
+		href, _ := s.Attr("href")
+		if href != "" {
+			if href == "/" {
+				s.SetAttr("href", "#")
+			} else {
+				// remove GET parameters to source file link because it results in a page not found error page
+				p, err := urllib.Parse(href)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if p.RawQuery != "" {
+					p.RawQuery = ""
+					s.SetAttr("href", p.String())
+				}
+			}
+		}
+	})
 
 	doc.Find("head").AppendHtml(`<link rel="stylesheet" href="/custom.css">`)
 
@@ -97,10 +135,10 @@ func clean(url string, doc *goquery.Document) {
 	fixPath("img", "src")
 }
 
-func parse(url string, process processFunc) (*goquery.Document, string) {
+func parse(url string, cache bool, process processFunc) (*goquery.Document, string) {
 	var (
 		file    = chm.GetFilename(url)
-		content = fetch(url)
+		content = fetch(url, cache)
 		reader  = strings.NewReader(string(content))
 	)
 
@@ -135,7 +173,7 @@ func downloadStatic(baseURL string, doc *goquery.Document) {
 					file := chm.GetFilename(url)
 					p := path.New(file)
 					p.Dir().MkdirAll()
-					p.Write(fetch(url))
+					p.Write(fetch(url, true))
 				}
 				staticMap[url] = true
 			}
@@ -209,18 +247,18 @@ func findIndex(toc *chm.TocItem, url string, doc *goquery.Document, pkg string) 
 		if strings.HasPrefix(text, "type ") {
 			tag = "type"
 			text = text[5:]
-			index.Add(fmt.Sprintf("%s (type in %s)", text, pkg)).AddLocal(link, pkg)
+			index.Add(fmt.Sprintf("%s%stype in %s", text, chm.IndexSeparator, pkg)).AddLocal(link, pkg)
 		} else if strings.HasPrefix(text, "func ") {
 			text = text[5:]
 			if strings.HasPrefix(text, "(") {
 				tag = "method"
 				text = strings.TrimSpace(funcReceiverRe.ReplaceAllString(text, ""))
 				if !strings.HasPrefix(text, "String() string") {
-					index.Add(fmt.Sprintf("%s (method of %s in %s)", simplifyFunc(text), currToc.Label(), pkg)).AddLocal(link, pkg)
+					index.Add(fmt.Sprintf("%s%smethod of %s in %s", simplifyFunc(text), chm.IndexSeparator, currToc.Label(), pkg)).AddLocal(link, pkg)
 				}
 			} else {
 				tag = "function"
-				index.Add(fmt.Sprintf("%s (func in %s)", simplifyFunc(text), pkg)).AddLocal(link, pkg)
+				index.Add(fmt.Sprintf("%s%sfunc in %s", simplifyFunc(text), chm.IndexSeparator, pkg)).AddLocal(link, pkg)
 			}
 		}
 
@@ -256,7 +294,7 @@ func findIndex(toc *chm.TocItem, url string, doc *goquery.Document, pkg string) 
 						text := chm.CleanTitle(s.Text())
 						link := strings.TrimPrefix(chm.AbsolutePath(url, "#"+id), "/")
 						t.Add(text, link)
-						index.Add(fmt.Sprintf("%s (const in %s)", text, pkg)).AddLocal(link, pkg)
+						index.Add(fmt.Sprintf("%s%sconst in %s", text, chm.IndexSeparator, pkg)).AddLocal(link, pkg)
 					}
 				})
 				curr = curr.Next()
@@ -270,7 +308,7 @@ func findIndex(toc *chm.TocItem, url string, doc *goquery.Document, pkg string) 
 						text := chm.CleanTitle(s.Text())
 						link := strings.TrimPrefix(chm.AbsolutePath(url, "#"+id), "/")
 						t.Add(text, link)
-						index.Add(fmt.Sprintf("%s (var in %s)", text, pkg)).AddLocal(link, pkg)
+						index.Add(fmt.Sprintf("%s%svar in %s", text, chm.IndexSeparator, pkg)).AddLocal(link, pkg)
 					}
 				})
 				curr = curr.Next()
@@ -298,7 +336,7 @@ func findIndex(toc *chm.TocItem, url string, doc *goquery.Document, pkg string) 
 				t.Add(text, strings.TrimPrefix(chm.AbsolutePath(url, href), "/"))
 
 				// to download and clean the page
-				parse(chm.AbsoluteURL(url, href), nil)
+				parse(chm.AbsoluteURL(url, href), true, nil)
 			})
 		}
 	})
@@ -369,14 +407,14 @@ func findPackages(url string, doc *goquery.Document) {
 
 			au := chm.AbsoluteURL(url, href)
 
-			pkgdoc, _ := parse(au, func(url string, doc *goquery.Document) {
+			pkgdoc, _ := parse(au, true, func(url string, doc *goquery.Document) {
 				findIndex(tc, url, doc, fullPkg)
 			})
 
 			if isDirectory(pkgdoc) {
 				tc.TagAs("directory")
 			} else {
-				indexTitle := fmt.Sprintf("%s (package %s)", title, fullPkg)
+				indexTitle := fmt.Sprintf("%s%spackage %s", title, chm.IndexSeparator, fullPkg)
 				index.Add(indexTitle).AddLocal(link, getTitle(pkgdoc))
 			}
 
@@ -400,6 +438,15 @@ func main() {
 
 	var blacklist string
 	flag.StringVar(&blacklist, "blacklist", "", "Blacklisted prefixes, separated by comma")
+
+	var compile bool
+	flag.BoolVar(&compile, "compile", false, "Compile project into chm")
+
+	var open bool
+	flag.BoolVar(&open, "open", false, "Open the project in HTML Help Workshop")
+
+	var chmPath string
+	flag.StringVar(&chmPath, "chm", "", "Path for the output chm")
 
 	flag.Parse()
 
@@ -435,9 +482,13 @@ func main() {
 		defer cache.close()
 	}
 
+	if chmPath != "" {
+		project.SetCompiledFile(chmPath)
+	}
+
 	project.Toc().Root().Add("Packages", "pkg/index.html")
 	project.SetStartFile("pkg/index.html")
-	parse(godocURL, findPackages)
+	parse(godocURL, false, findPackages)
 	if outputDir != "" {
 		exe, err := os.Executable()
 		if err != nil {
@@ -447,4 +498,10 @@ func main() {
 	}
 	project.AddFile("custom.css")
 	project.Save()
+	if open {
+		project.MustOpen()
+	}
+	if compile {
+		project.MustCompile()
+	}
 }

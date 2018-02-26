@@ -1,6 +1,10 @@
 package chm
 
 import (
+	"io"
+	"log"
+	"os"
+	"os/exec"
 	"regexp"
 	"sort"
 	"strings"
@@ -64,13 +68,25 @@ func (p *Project) Index() *Index { return p.index }
 
 // SetStartFile sets the initial file displayed in the CHM
 func (p *Project) SetStartFile(filename string) {
+	filename = strings.Replace(filename, "/", "\\", -1)
 	p.windowOptions["default_topic"] = filename
 	p.windowOptions["home"] = filename
 	p.AddFile(filename)
 }
 
+// GetCompiledFile returns the compiled file path
+func (p *Project) GetCompiledFile() string {
+	return p.options["Compiled File"]
+}
+
+// SetCompiledFile sets the compiled file path
+func (p *Project) SetCompiledFile(path string) {
+	p.options["Compiled File"] = path
+}
+
 // AddFile adds a file to the project
 func (p *Project) AddFile(filename string) {
+	filename = strings.Replace(filename, "/", "\\", -1)
 	p.files = append(p.files, filename)
 }
 
@@ -113,8 +129,9 @@ func (p *Project) Serialize(b *Buffer) {
 		added := make(map[string]bool)
 		b.Line("[FILES]")
 		for _, f := range p.files {
+			f = strings.Replace(f, "/", "\\", -1)
 			if _, ok := added[f]; !ok {
-				b.Line(strings.Replace(f, "/", "\\", -1))
+				b.Line(f)
 			}
 			added[f] = true
 		}
@@ -166,6 +183,49 @@ func (p *Project) Save() {
 	Save(p, p.name+".hhp")
 	Save(p.toc, p.name+".hhc")
 	Save(p.index, p.name+".hhk")
+}
+
+// Open opens the project in HTML Help Workshop
+func (p *Project) Open() error {
+	c := exec.Command(`"C:\Program Files (x86)\HTML Help Workshop\hhw.exe"`, p.name+".hhp")
+	return c.Run()
+}
+
+// MustOpen opens the project in HTML Help Workshop
+func (p *Project) MustOpen() {
+	if err := p.Open(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// Compile compiles the project
+func (p *Project) Compile() error {
+	c := exec.Command(`C:\Program Files (x86)\HTML Help Workshop\hhc.exe`, p.name+".hhp")
+	stdout, err := c.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := c.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := c.Start(); err != nil {
+		return err
+	}
+	if _, err := io.Copy(os.Stdout, stdout); err != nil {
+		return err
+	}
+	if _, err := io.Copy(os.Stderr, stderr); err != nil {
+		return err
+	}
+	return c.Wait()
+}
+
+// MustCompile compies the project
+func (p *Project) MustCompile() {
+	if err := p.Compile(); err != nil {
+		log.Fatalf("%v (%T)", err, err)
+	}
 }
 
 // FileSorter sorts the items
