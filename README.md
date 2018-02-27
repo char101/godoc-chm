@@ -1,6 +1,6 @@
 # godoc-chm
 
-This is a tool to generate CHM project files from do documentation hosted on a godoc HTTP server.
+This is a tool to generate CHM project files from go documentation hosted on a godoc HTTP server.
 
 ## Features
 
